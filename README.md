@@ -16,7 +16,7 @@ This design allowed us to assess evolutionary responses (ancestor-descendant reg
 Detailed methods and the assocated results are discussed in the assocated manuscript published in the American Journal of Botany.<br>
 
 Data files:<br>
-For each file, the data is found in the first tab while an explanation of each variable is provided in the second tab.<br>  
+For each file, the data is found in the first tab while an explanation of each variable is provided in the second tab.<br>
 The file named "Johnson_et_al_2022_AJB_individuals_data.xls" includes traits measured for individuals during the test generation of the experiment (flowering time, specific leaf area, and seed mass).<br> 
 The file named "Johnson_et_al_2022_AJB_WUE_data.xls" contains data for water-use efficiency, which is a trait that was measured on a pool for each experimental population during the test generation.<br> 
 
