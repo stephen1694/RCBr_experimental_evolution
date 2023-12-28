@@ -1,0 +1,455 @@
+#######################################################################
+##### Code for analyses in American Journal of Botany 2022 manuscript
+#######################################################################
+
+## Manuscript title: Rapid-cycling Brassica rapa evolves even earlier flowering under experimental drought
+## Authors: Stephen E. Johnson*, Elena Hamann, and Steven J. Franks
+## *Corresponding Email: sjohnson122@fordham.edu
+
+
+########## Table of Contents ##########################################
+#######################################################################
+
+## below I have provided the headings for each section or subsection of this script, along with whatever figures or tables of the manuscript they correspond to
+
+# Step 0: load in data with outliers removed
+## Load Johnson_et_al_2022_AJB_individuals_data.csv
+## Load Johnson_et_al_2022_AJB_WUE_data.csv
+
+# Part 1: exploring evolution and plasticity in traits
+## Analysis 1A- linear mixed-effects models for evolution and plasticity (Tables 1 and 2)
+## Analysis 1B- nonparametric assessment of evolution and plasticity for WUE (Tables 1 and 2)
+## Analysis 1C- assessing treatment effect on seed mass and survival (reported in text)
+## Analysis 1D- graph means and SE for each HisTreat group (Fig 2)
+## Analysis 1E- get FT mean by History and calculate Haldanes (reported in text)
+
+# Part 2: Selection and related analyses
+## Analysis 2A- calculating correlations of traits and survival under each treatment (reported in text)
+## Analyses 2B- Selection analyses (reported in text)
+## Analysis 2C- comparing strength of selection between treatments (reported in text)
+
+
+
+
+
+#############################################################################
+##### Step 0: load in data with outliers removed
+#############################################################################
+
+### Load Johnson_et_al_2022_AJB_individuals_data.csv
+#############################################################################
+
+data1 <- read.csv(file.choose(), header = TRUE)
+str(data1)
+# plants that broke before flowering are already excluded from both FT and seed mass measurements, and those that broke after flowering from seed mass measurments
+# plans with FT > 22 area also already excluded as these came from plants that were abnormal in phenotype and usually damaged
+# for these individuals that were excluded, trait values were replaced with NA and the value that was replaced, if applicable, was noted in the note column
+# means, variance, and standardizations were then calculated on the data after this outlier removal process
+
+# need to change data structure
+data1$Replicate <- as.factor(data1$Replicate)
+data1$Treatment <- as.factor(data1$Treatment)
+data1$Population <- as.factor(data1$Population)
+data1$History <- as.factor(data1$History)
+data1$HisTreat <- as.factor(data1$HisTreat)
+data1$HisTreatPop <- as.factor(data1$HisTreatPop)
+data1$Plant.ID <- as.factor(data1$Plant.ID)
+data1$germinated <- as.factor(data1$germinated)
+data1$ML<- as.factor(data1$ML)
+str(data1)
+
+### Load Johnson_et_al_2022_AJB_WUE_data.csv
+#############################################################################
+
+
+Wateruse <- read.csv(file.choose(), header = TRUE)
+str(Wateruse)
+
+# need to change data structure
+Wateruse$History <- as.factor(Wateruse$History)
+Wateruse$Treatment <- as.factor(Wateruse$Treatment)
+Wateruse$HisTreat <- as.factor(Wateruse$HisTreat)
+Wateruse$Population <- as.factor(Wateruse$Population)
+Wateruse$RepHisTreat <- as.factor(Wateruse$RepHisTreat)
+Wateruse$Technical_replicate <- as.factor(Wateruse$Technical_replicate)
+str(Wateruse)
+
+
+
+
+
+#############################################################################
+##### Part 1: exploring evolution and plasticity in traits
+#############################################################################
+
+##### Analysis 1A- linear mixed-effects models for evolution and plasticity (Tables 1 and 2)
+#############################################################################
+
+## load packages (if not yet installed can do wo with: install.packages("packagename")
+
+library(lmerTest) # used for mixed-effects models (lmer), assessment of random effects (rand)
+library(emmeans) # used for post hoc tests (emmeans)
+library(dplyr) # used to sort (arrange), group (group_by), count (tally), and filter (filter) data as well as for pipe (%>%)
+library(ggplot2) # used to plot data (ggplot)
+library(gridExtra) # used to plot multipanel figure (grid.arrange)
+
+## define functions
+
+normality.test <- function(model) {
+shapiro.test(residuals(model))}
+
+inspect.fit <- function(model) {
+par(mfrow = c(2, 2))
+plot(model)}
+
+homogeneity.test <- function(trait) {
+bartlett.test(trait~interaction(History,Treatment), data=data1)}
+
+visualize.variance <- function (trait) {
+plot(trait ~ interaction(History,Treatment), data=data1)}
+
+
+## analysis of traits with linear models
+
+## FT
+
+test1<-lmerTest::lmer(FT~History*Treatment+(1|History:Replicate), data=data1)
+normality.test(test1)
+homogeneity.test(data1$FT)
+visualize.variance(data1$FT)
+inspect.fit(test1)
+# fails but plots look fine and sample size >30 so proceed
+
+anova(test1)
+lmerTest::rand(test1)
+#effect of History and History:Replicate
+
+pairs(emmeans::emmeans(test1, ~ History))
+pairs(emmeans::emmeans(test1, ~ History), adjust="none")
+
+
+## SLA
+
+test2<-lmer(SLA~History*Treatment+(1|History:Replicate), data=data1)
+shapiro.test(residuals(test2))
+bartlett.test(SLA~interaction(History,Treatment), data=data1)
+par(mfrow = c(2, 2))
+plot(test2)
+plot(SLA ~ interaction(History,Treatment), data=data1)
+# raw SLA data looks great so proceed
+
+anova(test2)
+lmerTest::rand(test2)
+# no significant effect of History, Treatment, or History * Treatment so no post Hoc test
+
+
+## seed mass
+
+## bimodal distribution
+# variance is very unequal across treatments, which can be easily seen with the extremely large bartlett test statistic and plot below
+# for this reason, we chose to analyze Seed mass under each treatment separately, each with its own model
+plot(data1$Seed_mass_mg ~ data1$HisTreat)
+homogeneity.test(data1$Seed_mass_mg)
+
+## generate df for drought and watered treatment data only
+data1_D <- select(dplyr::filter(data1, Treatment == "drought"), c(History,Replicate,Seed_mass_mg))
+data1_W <- select(dplyr::filter(data1, Treatment == "watered"), c(History,Replicate,Seed_mass_mg))
+
+# seed mass under drought treatment
+test3 <- lmerTest::lmer(Seed_mass_mg~History + (1|History:Replicate), data=data1_D)
+normality.test(test3)
+bartlett.test(Seed_mass_mg~History, data=data1_D)
+inspect.fit(test3)
+plot(Seed_mass_mg ~ History, data=data1_D)
+# fails plots but sample sizes > 30 so proceed
+
+anova(test3)
+lmerTest::rand(test3)
+
+# History nearly significant so ran post hoc test
+pairs(emmeans::emmeans(test3, ~ History))
+pairs(emmeans::emmeans(test3, ~ History), adjust="none")
+
+
+# seed mass under watered treatment
+test4 <- lmerTest::lmer(Seed_mass_mg~ History + (1|History:Replicate), data=data1_W)
+normality.test(test4)
+bartlett.test(Seed_mass_mg~History, data=data1_W)
+inspect.fit(test4)
+plot(Seed_mass_mg ~ History, data=data1_W)
+# fails plots but sample sizes > 30 so proceed
+
+anova(test4)
+lmerTest::rand(test4)
+# History not significant
+
+
+##### Analysis 1B- nonparametric assessment of evolution and plasticity for WUE (Tables 1 and 2)
+#############################################################################
+
+## WUE
+
+# shapiro wilk and bartlett of data
+WUE <- aov(d13C ~ Wateruse$History * Wateruse$Treatment, data = Wateruse)
+shapiro.test(residuals(WUE))
+bartlett.test(d13C~HisTreat, data = Wateruse)
+plot(d13C ~ HisTreat, data=Wateruse)
+plot(residuals(WUE))
+# data fail
+
+# ANOVA and shapiro wilk of transformed data
+logWUE <- aov(Wateruse$log_d13C ~ Wateruse$History * Wateruse$Treatment, data = Wateruse)
+shapiro.test(residuals(logWUE))
+bartlett.test(Wateruse$log_d13C~HisTreat, data = Wateruse)
+plot(residuals(logWUE))
+# still fail
+
+# non parametric Kriskal-Wallis test
+test5 <- kruskal.test(d13C ~ Wateruse$History, data = Wateruse)
+test5
+# significant History effect
+
+# post hoc Wilcoxon tests on History
+pairwise.wilcox.test(Wateruse$d13C, Wateruse$History, p.adj="holm", paired=FALSE, data = Wateruse)
+pairwise.wilcox.test(Wateruse$d13C, Wateruse$History, p.adj="none", paired=FALSE, data = Wateruse)
+
+test6 <- kruskal.test(d13C ~ Treatment, data = Wateruse)
+test6
+# no significant effect of Treatment
+
+
+### Analys-s 1C- assessing treatment effect on seed mass and survival (reported in text)
+#######################################################################
+
+## survival by treat
+
+# testing with linear model on arcsin sqrt transformed survival proportion for populations by treatment
+survival_df <- data1 %>% dplyr::group_by(Treatment, Population) %>% dplyr::tally(Seed_mass_mg > 0)
+survival_df <- as.data.frame(survival_df)
+survival_df$prop_survival <- survival_df$n / 48
+survival_df$arcsin_sqrt_surv <- asin(sqrt(survival_df$prop_survival))
+test6 <- lm(arcsin_sqrt_surv ~ Treatment, data=survival_df)
+normality.test(test6)
+bartlett.test(arcsin_sqrt_surv~Treatment, data=survival_df)
+inspect.fit(test6)
+summary(test6)
+anova(test6)
+
+# calculating % for each treatment
+drought_surv <- sum(survival_df[1:12,3]) / 576
+drought_surv
+#79.5%
+
+watered_surv <- sum(survival_df[13:24,3]) / 576
+watered_surv
+#79.3%
+
+## quantifying treatment effect on seed mass revealed by lm for individuals that did reproduce
+
+data1_A <- select(dplyr::filter(data1, History=="ancestral"), c(Replicate,Treatment,Seed_mass_mg))
+
+# t-test for treatment effect
+t.test(data1_A$Seed_mass_mg[data1_A$Treatment=="drought"],data1_A$Seed_mass_mg[data1_A$Treatment=="watered"])
+
+# biological magnitude of treatment effect
+SMdrought <- mean(data1$Seed_mass_mg[data1$Treatment=="drought"], na.rm=TRUE)
+SMwatered <- mean(data1$Seed_mass_mg[data1$Treatment=="watered"], na.rm=TRUE)
+effect <- (SMwatered - SMdrought) / SMwatered
+effect
+#65%
+
+## quantifying fitness effect of shift in FT
+standFT_histreat_means <- as.data.frame(data1 %>% dplyr::group_by(HisTreat) %>% dplyr::summarise(Mean=mean(Stand_FT, na.rm = TRUE)))
+standFT_drought_shift <- (standFT_histreat_means[1,2] - standFT_histreat_means[3,2]) * 0.4 *100
+standFT_drought_shift
+#9.6%
+
+
+##### Analysis 1D- graph means and SE for each HisTreat group (Fig 2)
+#######################################################################
+
+## functions
+get_means <- function(lm) {
+t <- as.data.frame(emmeans::emmeans(lm, ~ Treatment:History))
+return(t[,3:4])}
+
+SMd <- as.data.frame(emmeans::emmeans(test3, ~History, mode="satterthwaite"))
+SMw <- as.data.frame(emmeans::emmeans(test4, ~History, mode="satterthwaite"))
+
+## creating data frame to store His*Treat means, SE, and df
+
+histreatmeans <- data.frame(matrix(NA, nrow=6, ncol = 11)) 
+histreatmeans[,1] <- c("Drought", "Watered", "Drought", "Watered", "Drought", "Watered")
+histreatmeans[,2] <- c("Ancestral", "Ancestral", "Drought", "Drought", "Watered", "Watered")
+histreatmeans[,3] <- c("AD", "AW", "DD", "DW", "WD", "WW")
+histreatmeans[,4:5] <- get_means(test1)
+histreatmeans[,6:7] <- get_means(test2)
+histreatmeans[c(1,3,5),8:9] <- SMd[,2:3]
+histreatmeans[c(2,4,6),8:9] <- SMw[,2:3]
+histreatmeans[,10:11] <- get_means(WUE)
+colnames(histreatmeans) <- c("Treatment", "History", "HisTreat", "FT", "FT_SE", "SLA", "SLA_SE", "Seed_mass_mg", "Seed_mass_mg_SE", "WUE", "WUE_SE")
+histreatmeans <- dplyr::arrange(histreatmeans, History, desc(Treatment))
+
+## code for figure 2
+
+Fig2A<-ggplot2::ggplot(histreatmeans,aes(x=reorder(Treatment, desc(Treatment)), y=FT, group=interaction(Treatment,History),fill=History)) + geom_bar(stat="identity",color="black",width=0.5, position="dodge") + geom_errorbar(aes(ymin=FT-FT_SE, ymax=FT+FT_SE),width=.1,position=position_dodge(.5))+scale_fill_manual(values = alpha(c("grey", "tomato1", "lightskyblue2")))+labs(x="Treatment",y="FT (days)", tag="A")+theme_classic(base_size=10, base_family="serif") + coord_cartesian(ylim=c(13,16)) + scale_x_discrete(labels=c("Watered", "Drought")) + theme(legend.position = c(0.55,0.85)) + guides(fill = guide_legend()) 
+Fig2B<-ggplot2::ggplot(histreatmeans,aes(x=reorder(Treatment, desc(Treatment)), y=SLA, group=interaction(Treatment,History),fill=History)) + geom_bar(stat="identity",color="black",width=0.5, position="dodge") + geom_errorbar(aes(ymin=SLA-SLA_SE, ymax=SLA+SLA_SE),width=.1,position=position_dodge(.5))+scale_fill_manual(values = alpha(c("grey", "tomato1", "lightskyblue2")))+labs(x="Treatment",y=expression("SLA "~(mm^2 /mg)), tag="B")+theme_classic(base_size=10, base_family="serif") + coord_cartesian(ylim=c(55,75)) + scale_x_discrete(labels=c("Watered", "Drought")) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5))
+Fig2C<-ggplot2::ggplot(histreatmeans,aes(x=reorder(Treatment, desc(Treatment)), y=Seed_mass_mg, group=interaction(Treatment,History),fill=History)) + geom_bar(stat="identity",color="black",width=0.5, position="dodge") + geom_errorbar(aes(ymin=Seed_mass_mg-Seed_mass_mg_SE, ymax=Seed_mass_mg+Seed_mass_mg_SE),width=.1,position=position_dodge(.5))+scale_fill_manual(values = alpha(c("grey", "tomato1", "lightskyblue2")))+labs(x="Treatment",y="Seed mass (mg)", tag="D")+theme_classic(base_size=10, base_family="serif") + coord_cartesian(ylim=c(0,155)) + scale_x_discrete(labels=c("Watered", "Drought")) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5))
+Fig2D<-ggplot2::ggplot(histreatmeans,aes(x=reorder(Treatment, desc(Treatment)), y=WUE, group=interaction(Treatment,History),fill=History)) + geom_bar(stat="identity",color="black",width=0.5, position="dodge") + geom_errorbar(aes(ymin=WUE-WUE_SE, ymax=WUE+WUE_SE),width=.1,position=position_dodge(.5)) + scale_fill_manual(values = alpha(c("grey", "tomato1", "lightskyblue2")))+labs(x="Treatment",y="WUE (𝛿13C vPDB)", tag="C")+theme_classic(base_size=10, base_family="serif") + coord_cartesian(ylim=c(-38,-32)) + scale_x_discrete(position = "top", labels=c("Watered", "Drought")) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5))
+Fig2 <- gridExtra::grid.arrange(Fig2A, Fig2B, Fig2D, Fig2C, nrow = 2, layout_matrix = cbind(c(1,3), c(2,4)))
+Fig2
+# ggplot2::ggsave(filename = "Fig2.tiff", plot = Fig2, width = 18.4, height = 18.4, units = "cm", device='tiff', dpi=600)
+
+## code for alternate figure 2 (history on x axis, with different treatments within each history graphed adjacent)
+#Fig2A<-ggplot2::ggplot(histreatmeans,aes(x=History, y=FT, group=interaction(desc(Treatment),History),fill=Treatment)) + geom_bar(stat="identity",color="black",width=0.5, position="dodge") + geom_errorbar(aes(ymin=FT-FT_SE, ymax=FT+FT_SE),width=.1,position=position_dodge(.5))+scale_fill_manual(values = alpha(c("tomato1", "lightskyblue2")))+labs(x="Evolution History",y="FT (days)", tag="A")+theme_classic(base_size=10, base_family="serif") + coord_cartesian(ylim=c(13,16)) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5)) + scale_x_discrete(labels=c("Ancestral", "Drought", "Watered")) + theme(legend.position = c(0.5,0.85)) + guides(fill = guide_legend(reverse = TRUE)) 
+#Fig2B<-ggplot2::ggplot(histreatmeans,aes(x=History, y=SLA, group=interaction(desc(Treatment),History),fill=Treatment)) + geom_bar(stat="identity",color="black",width=0.5, position="dodge") + geom_errorbar(aes(ymin=SLA-SLA_SE, ymax=SLA+SLA_SE),width=.1,position=position_dodge(.5))+scale_fill_manual(values = alpha(c("tomato1", "lightskyblue2")))+labs(x="Evolution History",y=expression("SLA "~(mm^2 /mg)), tag="B")+theme_classic(base_size=10, base_family="serif") + coord_cartesian(ylim=c(55,75)) + scale_x_discrete(labels=c("Ancestral", "Drought", "Watered")) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5))
+#Fig2C<-ggplot2::ggplot(histreatmeans,aes(x=History, y=Seed_mass_mg, group=interaction(desc(Treatment),History),fill=Treatment)) + geom_bar(stat="identity",color="black",width=0.5, position="dodge") + geom_errorbar(aes(ymin=Seed_mass_mg-Seed_mass_mg_SE, ymax=Seed_mass_mg+Seed_mass_mg_SE),width=.1,position=position_dodge(.5))+scale_fill_manual(values = alpha(c("tomato1", "lightskyblue2")))+labs(x="Evolution History",y="Seed mass (mg)", tag="D")+theme_classic(base_size=10, base_family="serif") + coord_cartesian(ylim=c(0,175)) + scale_x_discrete(labels=c("Ancestral", "Drought", "Watered")) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5))
+#Fig2D<-ggplot2::ggplot(histreatmeans,aes(x=History, y=WUE, group=interaction(desc(Treatment),History),fill=Treatment)) + geom_bar(stat="identity",color="black",width=0.5, position="dodge") + geom_errorbar(aes(ymin=WUE-WUE_SE, ymax=WUE+WUE_SE),width=.1,position=position_dodge(.5)) + scale_fill_manual(values = alpha(c("tomato1", "lightskyblue2")))+labs(x="Evolution History",y="WUE (𝛿13C vPDB)", tag="C")+theme_classic(base_size=10, base_family="serif") + coord_cartesian(ylim=c(-38,-32)) + scale_x_discrete(position = "top", labels=c("Ancestral", "Drought", "Watered")) + theme(legend.position = "none", plot.title = element_text(hjust = 0.5))
+#Fig2 <- gridExtra::grid.arrange(Fig2A, Fig2B, Fig2D, Fig2C, nrow = 2, layout_matrix = cbind(c(1,3), c(2,4)))
+#Fig2
+#ggplot2::ggsave(filename = "Fig2.tiff", plot = Fig2, width = 18.4, height = 18.4, units = "cm", device='tiff', dpi=600)
+
+
+##### Analysis 1E- get FT mean by History and calculate Haldanes (reported in text)
+#######################################################################
+
+# mean trait change
+FTancestor <- mean(data1$FT[data1$History=="ancestral"], na.rm=TRUE)
+FTdrought <- mean(data1$FT[data1$History=="dry"], na.rm=TRUE)
+FTwatered <- mean(data1$FT[data1$History=="wet"], na.rm=TRUE)
+FTancestor - FTdrought #drought descendant raw FT shift
+FTancestor - FTwatered #watered descendant raw FT shift
+
+lmFT<-lm(FT~History+Population, data=data1)
+hismeans <- as.data.frame(emmeans::emmeans(lmFT, ~ Population))
+
+ancN <- as.data.frame(table(data1$FT[data1$History=="ancestral"] > 0))
+droN <- as.data.frame(table(data1$FT[data1$History=="dry"] > 0))
+watN <- as.data.frame(table(data1$FT[data1$History=="wet"] > 0))
+
+logshiftDmean <- log(FTancestor) - log(FTdrought)
+pooledsdAD <- sqrt(((sd(log(data1$FT[data1$History=="ancestral"]),na.rm=TRUE)^2 * (ancN[1,2] -1))  + (sd(log(data1$FT[data1$History=="dry"]),na.rm=TRUE)^2 * (droN[1,2] -1))) / (ancN[1,2] + droN[1,2] -2))
+
+logshiftWmean <- log(FTancestor) - log(FTwatered)
+pooledsdAW <- sqrt(((sd(log(data1$FT[data1$History=="ancestral"]),na.rm=TRUE)^2 * (ancN[1,2] -1))  + (sd(log(data1$FT[data1$History=="wet"]),na.rm=TRUE)^2 * (watN[1,2] -1))) / (ancN[1,2] + watN[1,2] -2))
+
+Haldanes <- data.frame(matrix(NA, nrow=2, ncol = 1))
+Haldanes[1,1] <- (logshiftDmean / pooledsdAD) / 4
+Haldanes[2,1] <- (logshiftWmean / pooledsdAW) / 4
+colnames(Haldanes) <- c("FT Haldanes")
+rownames(Haldanes) <- c("drought", "watered")
+Haldanes
+
+
+
+
+
+#############################################################################
+##### Part 2: Selection and related analyses
+#############################################################################
+
+## packages
+
+#library(emmeans) # used to test selection differentials betweeen treatments (lstrends), already loaded from part 1
+#library(dplyr) # used to filter data (filter) and for pipe (%>%), already loaded from part 1
+#library(ggplot2) # used to plot data (ggplot), already loaded from part 1
+#library(gridExtra) # used to plot multipanel figure (grid.arrange), already loaded from part 1
+
+## define functions
+
+inspect.fit <- function(model) {
+par(mfrow = c(2, 2))
+plot(model)}
+
+normality.test <- function(model) {
+shapiro.test(residuals(model))}
+
+inspect.resid.fit <- function(model) {
+par(mfrow = c(2, 2))
+resid<-residuals(model)
+qqnorm(resid)
+qqline(resid)
+plot(resid)}
+
+
+### Analysis 2A- calculating correlations of traits and survival under each treatment (reported in text)
+#######################################################################
+
+## checking Pearson correlations between FT, SLA under drought and watered treatments
+
+cor.test(data1$FT[data1$Treatment=="drought"], data1$SLA[data1$Treatment=="drought"], method=c("pearson"))
+cor.test(data1$FT[data1$Treatment=="watered"], data1$SLA[data1$Treatment=="watered"], method=c("pearson"))
+# correlation coefficients not highly correlated so fine to proceed with selection analysis on each trait
+
+### Analysis 2B- Selection analyses (reported in text)
+#######################################################################
+
+## FT
+test8 <- lm(Rel_seed_mass[Treatment=="watered"]~Stand_FT[Treatment=="watered"], na.action=na.omit, data=data1)
+inspect.fit(test8)
+normality.test(test8)
+inspect.resid.fit(test8)
+anova(test8)
+summary(test8)
+
+StandFT2<-data1$Stand_FT^2
+lmq8<-lm(Rel_seed_mass[Treatment=="watered"]~Stand_FT[Treatment=="watered"]+StandFT2[Treatment=="watered"], na.action=na.omit, data=data1)
+anova(lmq8)
+summary(lmq8)
+
+test9 <- lm(Rel_seed_mass[Treatment=="drought"]~Stand_FT[Treatment=="drought"], na.action=na.omit, data=data1)
+inspect.fit(test9)
+normality.test(test9)
+inspect.resid.fit(test9)
+anova(test9)
+summary(test9)
+
+StandFT2<-data1$Stand_FT^2
+lmq9<-lm(Rel_seed_mass[Treatment=="drought"]~Stand_FT[Treatment=="drought"]+StandFT2[Treatment=="drought"], na.action=na.omit, data=data1)
+anova(lmq9)
+summary(lmq9)
+
+
+## SLA
+
+test10 <- lm(Rel_seed_mass[Treatment=="watered"]~Stand_SLA[Treatment=="watered"], na.action=na.omit, data=data1)
+inspect.fit(test10)
+normality.test(test10)
+inspect.resid.fit(test10)
+anova(test10)
+summary(test10)
+
+StandSLA2<-data1$Stand_SLA^2
+lmq10<-lm(Rel_seed_mass[Treatment=="watered"]~Stand_SLA[Treatment=="watered"]+StandSLA2[Treatment=="watered"], na.action=na.omit, data=data1)
+anova(lmq10)
+summary(lmq10)
+
+test11 <- lm(Rel_seed_mass[Treatment=="drought"]~Stand_SLA[Treatment=="drought"], na.action=na.omit, data=data1)
+inspect.fit(test11)
+normality.test(test11)
+inspect.resid.fit(test11)
+anova(test11)
+summary(test11)
+
+StandSLA2<-data1$Stand_SLA^2
+lmq11<-lm(Rel_seed_mass[Treatment=="drought"]~Stand_SLA[Treatment=="drought"]+StandSLA2[Treatment=="drought"], na.action=na.omit, data=data1)
+anova(lmq11)
+summary(lmq11)
+
+
+### Analysis 2C- comparing strength of selection between treatments (reported in text)
+#######################################################################
+
+slopes.FT <- lm(Rel_seed_mass ~ Stand_FT * Treatment, data = data1)
+slopes.FT$coefficients
+test12 <- emmeans::lstrends(slopes.FT, "Treatment", var="Stand_FT")
+pairs(test12)
+
+
+## Plots of selection analyses (not publicsed, since we reported selection gradients/differentials in text)
+#SA_FT <- data1 %>% ggplot2::ggplot(aes(x=Stand_FT, y=Rel_seed_mass, color=Treatment)) + geom_point(size=0.5) + scale_x_continuous(name="Standardized FT",breaks=c(-3, -2, -1, 0, 1, 2, 3), limits=c(-2.5,3.9)) + theme_classic(base_size=10, base_family="serif") + scale_y_continuous(name="Relative fitness", limits=c(0,4.5)) + labs(tag="A") + scale_color_manual(values=c("tomato1", "lightskyblue2")) + geom_smooth(data = data1 %>% dplyr::filter(!Treatment %in% "drought"), method=lm, formula = y ~ x, size=0.5, fill="lightskyblue2") + geom_smooth(data = data1 %>% dplyr::filter(!Treatment %in% "watered"), method=lm, formula = y ~ x, size=0.5, fill="tomato1") + theme(legend.position = c(0.75,0.75)) + guides(colour = guide_legend(override.aes=list(fill=NA))) 
+#SA_SLA <- ggplot2::ggplot(data1, aes(x=Stand_SLA, y=Rel_seed_mass, color=Treatment)) + geom_point(size=0.5)+ scale_x_continuous(name="Standardized SLA",breaks=c(-0.25, 0, 0.25), limits=c(-0.25,0.26))  + theme_classic(base_size=10, base_family="serif") + ylab("Relative fitness") + labs(tag="B") + scale_color_manual(values=c("tomato1", "lightskyblue2")) + theme(legend.position = "none") 
+#SA <- gridExtra::grid.arrange(SA_FT, SA_SLA, nrow = 1)
+#SA
+
+
